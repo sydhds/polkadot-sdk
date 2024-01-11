@@ -73,7 +73,6 @@
 //! # }
 //! ```
 
-#![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(enable_alloc_error_handler, feature(alloc_error_handler))]
 
@@ -1737,6 +1736,117 @@ mod tracing_setup {
 
 pub use tracing_setup::init_tracing;
 
+#[derive(
+	Encode, Decode, num_enum::TryFromPrimitive, num_enum::IntoPrimitive, Debug, PartialEq, Eq,
+)]
+#[repr(u8)]
+pub enum VirtInstantiateError {
+	InvalidImage = 1,
+}
+
+#[derive(
+	Encode, Decode, num_enum::TryFromPrimitive, num_enum::IntoPrimitive, Debug, PartialEq, Eq,
+)]
+#[repr(u8)]
+pub enum VirtExecError {
+	InvalidInstance = 1,
+	InvalidImage = 2,
+	OutOfGas = 3,
+	Trap = 4,
+}
+
+#[derive(
+	Encode, Decode, num_enum::TryFromPrimitive, num_enum::IntoPrimitive, Debug, PartialEq, Eq,
+)]
+#[repr(u8)]
+pub enum VirtMemoryError {
+	InvalidInstance = 1,
+	OutOfBounds = 2,
+}
+
+#[derive(
+	Encode, Decode, num_enum::TryFromPrimitive, num_enum::IntoPrimitive, Debug, PartialEq, Eq,
+)]
+#[repr(u8)]
+pub enum VirtDestroyError {
+	InvalidInstance = 1,
+}
+
+#[repr(C)]
+pub struct VirtSharedState<T> {
+	pub gas_left: u64,
+	pub exit: bool,
+	pub user: T,
+}
+
+pub type VirtSyscallHandler<T> = extern "C" fn(
+	state: &mut VirtSharedState<T>,
+	syscall_no: u32,
+	a0: u32,
+	a1: u32,
+	a2: u32,
+	a3: u32,
+	a4: u32,
+	a5: u32,
+) -> u64;
+
+#[runtime_interface(wasm_only)]
+pub trait Virtualization {
+	fn instantiate(&mut self, program: &[u8]) -> Result<u64, VirtInstantiateError> {
+		self.virtualization()
+			.instantiate(program)
+			.expect("instantiation failed")
+			.map_err(|err| TryFrom::try_from(err).expect("Invalid error"))
+	}
+
+	fn execute(
+		&mut self,
+		instance_id: u64,
+		function: &str,
+		syscall_handler: u32,
+		state_ptr: u32,
+		destroy: bool,
+	) -> Result<(), VirtExecError> {
+		self.virtualization()
+			.execute(instance_id, function, syscall_handler, state_ptr, destroy)
+			.expect("execution failed")
+			.map_err(|err| TryFrom::try_from(err).expect("Invalid error"))
+	}
+
+	fn destroy(&mut self, instance_id: u64) -> Result<(), VirtDestroyError> {
+		self.virtualization()
+			.destroy(instance_id)
+			.expect("memory access error")
+			.map_err(|err| TryFrom::try_from(err).expect("Invalid error"))
+	}
+
+	fn read_memory(
+		&mut self,
+		instance_id: u64,
+		offset: u32,
+		buf_ptr: u32,
+		buf_len: u32,
+	) -> Result<(), VirtMemoryError> {
+		self.virtualization()
+			.read_memory(instance_id, offset, buf_ptr, buf_len)
+			.expect("memory access error")
+			.map_err(|err| TryFrom::try_from(err).expect("Invalid error"))
+	}
+
+	fn write_memory(
+		&mut self,
+		instance_id: u64,
+		offset: u32,
+		buf_ptr: u32,
+		buf_len: u32,
+	) -> Result<(), VirtMemoryError> {
+		self.virtualization()
+			.write_memory(instance_id, offset, buf_ptr, buf_len)
+			.expect("memory access error")
+			.map_err(|err| TryFrom::try_from(err).expect("Invalid error"))
+	}
+}
+
 /// Allocator used by Substrate when executing the Wasm runtime.
 #[cfg(all(target_arch = "wasm32", not(feature = "std")))]
 struct WasmAllocator;
@@ -1815,6 +1925,7 @@ pub type SubstrateHostFunctions = (
 	crate::trie::HostFunctions,
 	offchain_index::HostFunctions,
 	transaction_index::HostFunctions,
+	virtualization::HostFunctions,
 );
 
 #[cfg(test)]
