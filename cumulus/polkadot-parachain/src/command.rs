@@ -738,7 +738,7 @@ async fn start_node<Network: sc_network::NetworkBackend<Block, Hash>>(
 			.await
 			.map(|r| r.0)
 			.map_err(Into::into),
-		AssetHubRococo => crate::service::start_asset_hub_lookahead_node::<
+		Runtime::AssetHubRococo => crate::service::start_asset_hub_lookahead_node::<
 			RuntimeApi,
 			AuraId,
 			Network,
