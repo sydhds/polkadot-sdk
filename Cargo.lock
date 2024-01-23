@@ -7920,7 +7920,7 @@ dependencies = [
 [[package]]
 name = "litep2p"
 version = "0.2.0"
-source = "git+https://github.com/altonen/litep2p?branch=debug-2944#145b2b9cffc90f9ac48608c8f5daf384291da7ea"
+source = "git+https://github.com/altonen/litep2p?branch=debug-2944#d966d5b5a928d5bb376f9c3d91405dd9e07d2b12"
 dependencies = [
  "async-trait",
  "bs58 0.4.0",
@@ -18611,7 +18611,7 @@ dependencies = [
 [[package]]
 name = "sp-crypto-ec-utils"
 version = "0.4.1"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "ark-bls12-377",
  "ark-bls12-377-ext",
@@ -18672,7 +18672,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "8.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -18692,7 +18692,7 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.19.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "environmental",
  "parity-scale-codec",
@@ -18926,7 +18926,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface"
 version = "17.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "bytes",
  "impl-trait-for-tuples",
@@ -18956,7 +18956,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "11.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "Inflector",
  "expander 2.0.0",
@@ -19086,7 +19086,7 @@ version = "8.0.0"
 [[package]]
 name = "sp-std"
 version = "8.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 
 [[package]]
 name = "sp-storage"
@@ -19103,7 +19103,7 @@ dependencies = [
 [[package]]
 name = "sp-storage"
 version = "13.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -19152,7 +19152,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "10.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "parity-scale-codec",
  "sp-std 8.0.0 (git+https://github.com/paritytech/polkadot-sdk)",
@@ -19253,7 +19253,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "14.0.0"
-source = "git+https://github.com/paritytech/polkadot-sdk#e16ef0861f576dd260487d78b57949b18795ed77"
+source = "git+https://github.com/paritytech/polkadot-sdk#8eeacff484cf7c7ec6081495dcaffef5a0867bc5"
 dependencies = [
  "anyhow",
  "impl-trait-for-tuples",
