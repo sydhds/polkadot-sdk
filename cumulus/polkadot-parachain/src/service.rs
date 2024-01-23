@@ -1296,16 +1296,8 @@ where
 	Ok(BasicQueue::new(verifier, Box::new(block_import), None, &spawner, registry))
 }
 
-<<<<<<< HEAD
-/// Start an aura powered parachain node. Asset Hub and Collectives use this.
-pub async fn start_generic_aura_node<RuntimeApi, AuraId: AppCrypto, Net>(
-||||||| 757ae372f7f
-/// Start an aura powered parachain node. Asset Hub and Collectives use this.
-pub async fn start_generic_aura_node<RuntimeApi, AuraId: AppCrypto>(
-=======
 /// Start an aura powered parachain node. Collectives uses this.
-pub async fn start_generic_aura_node<RuntimeApi, AuraId: AppCrypto>(
->>>>>>> origin/master
+pub async fn start_generic_aura_node<RuntimeApi, AuraId: AppCrypto, Net>(
 	parachain_config: Configuration,
 	polkadot_config: Configuration,
 	collator_options: CollatorOptions,
@@ -1551,7 +1543,11 @@ where
 ///
 /// Uses the lookahead collator to support async backing.
 #[sc_tracing::logging::prefix_logs_with("Parachain")]
-pub async fn start_asset_hub_lookahead_node<RuntimeApi, AuraId: AppCrypto + Send + Codec + Sync, Network>(
+pub async fn start_asset_hub_lookahead_node<
+	RuntimeApi,
+	AuraId: AppCrypto + Send + Codec + Sync,
+	Network,
+>(
 	parachain_config: Configuration,
 	polkadot_config: Configuration,
 	collator_options: CollatorOptions,
