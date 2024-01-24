@@ -268,6 +268,7 @@ impl NotificationService for NotificationProtocol {
 	async fn next_event(&mut self) -> Option<SubstrateNotificationEvent> {
 		loop {
 			tokio::select! {
+				biased;
 				event = self.handle.next() => match event? {
 					NotificationEvent::ValidateSubstream { peer, handshake, .. } => {
 						if let ValidationResult::Reject = self.peerset.report_inbound_substream(peer.into()) {
