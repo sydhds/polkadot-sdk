@@ -626,7 +626,7 @@ impl<D: NativeExecutionDispatch> RuntimeVersionOf for NativeElseWasmExecutor<D> 
 		ext: &mut dyn Externalities,
 		runtime_code: &RuntimeCode,
 	) -> Result<RuntimeVersion> {
-		self.wasm.runtime_version(ext, runtime_code)
+		Ok(self.native_version.runtime_version.clone())
 	}
 }
 
@@ -653,59 +653,14 @@ impl<D: NativeExecutionDispatch + 'static> CodeExecutor for NativeElseWasmExecut
 			function = %method,
 			"Executing function",
 		);
-
-		let on_chain_heap_alloc_strategy = if self.wasm.ignore_onchain_heap_pages {
-			self.wasm.default_onchain_heap_alloc_strategy
-		} else {
-			runtime_code
-				.heap_pages
-				.map(|h| HeapAllocStrategy::Static { extra_pages: h as _ })
-				.unwrap_or_else(|| self.wasm.default_onchain_heap_alloc_strategy)
-		};
-
-		let heap_alloc_strategy = match context {
-			CallContext::Offchain => self.wasm.default_offchain_heap_alloc_strategy,
-			CallContext::Onchain => on_chain_heap_alloc_strategy,
-		};
-
-		let mut used_native = false;
-		let result = self.wasm.with_instance(
-			runtime_code,
-			ext,
-			heap_alloc_strategy,
-			|_, mut instance, onchain_version, mut ext| {
-				let onchain_version =
-					onchain_version.ok_or_else(|| Error::ApiError("Unknown version".into()))?;
-
-				let can_call_with =
-					onchain_version.can_call_with(&self.native_version.runtime_version);
-
-				if use_native && can_call_with {
-					tracing::trace!(
-						target: "executor",
-						native = %self.native_version.runtime_version,
-						chain = %onchain_version,
-						"Request for native execution succeeded",
-					);
-
-					used_native = true;
-					Ok(with_externalities_safe(&mut **ext, move || D::dispatch(method, data))?
-						.ok_or_else(|| Error::MethodNotFound(method.to_owned())))
-				} else {
-					if !can_call_with {
-						tracing::trace!(
-							target: "executor",
-							native = %self.native_version.runtime_version,
-							chain = %onchain_version,
-							"Request for native execution failed",
-						);
-					}
-
-					with_externalities_safe(&mut **ext, move || instance.call_export(method, data))
-				}
-			},
-		);
-		(result, used_native)
+		let used_native = true;
+        let mut ext = AssertUnwindSafe(ext);
+        let result = match with_externalities_safe(&mut **ext, move || D::dispatch(method, data)) {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) => Err(Error::MethodNotFound(method.to_owned())),
+            Err(err) => Err(err),
+        };
+    	(result, used_native)
 	}
 }
 
