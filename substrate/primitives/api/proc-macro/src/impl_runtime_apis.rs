@@ -15,6 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use proc_macro::Delimiter;
 use crate::{
 	common::API_VERSION_ATTRIBUTE,
 	utils::{
@@ -25,7 +26,7 @@ use crate::{
 	},
 };
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Group, Span, TokenStream};
 
 use quote::quote;
 
@@ -101,6 +102,8 @@ fn generate_impl_call(
 			}
 		};
 
+		// eprintln!("ORIG c: {:?}", c);
+		
 		quote!(
 			#let_binding =
 				match #c::DecodeLimit::decode_all_with_depth_limit(
@@ -110,6 +113,123 @@ fn generate_impl_call(
 					Ok(res) => res,
 					Err(e) => panic!("Bad input data provided to {}: {}", #fn_name_str, e),
 				};
+		)
+	};
+
+	let fn_calls = if let Some(feature_gated) = &api_version.feature_gated {
+		let pnames = pnames2;
+		let pnames2 = pnames.clone();
+		let pborrow2 = pborrow.clone();
+
+		let feature_name = &feature_gated.0;
+		let impl_trait_fg = extend_with_api_version(impl_trait.clone(), Some(feature_gated.1));
+		let impl_trait = extend_with_api_version(impl_trait.clone(), api_version.custom);
+
+		quote!(
+			#[cfg(feature = #feature_name)]
+			#[allow(deprecated)]
+			let r = <#runtime as #impl_trait_fg>::#fn_name(#( #pborrow #pnames ),*);
+
+			#[cfg(not(feature = #feature_name))]
+			#[allow(deprecated)]
+			let r = <#runtime as #impl_trait>::#fn_name(#( #pborrow2 #pnames2 ),*);
+
+			r
+		)
+	} else {
+		let pnames = pnames2;
+		let impl_trait = extend_with_api_version(impl_trait.clone(), api_version.custom);
+
+		quote!(
+			#[allow(deprecated)]
+			<#runtime as #impl_trait>::#fn_name(#( #pborrow #pnames ),*)
+		)
+	};
+
+	Ok(quote!(
+		#decode_params
+
+		#fn_calls
+	))
+}
+
+/// Generates the call to the implementation of the requested function.
+/// The generated code includes decoding of the input arguments and encoding of the output.
+fn generate_impl_native_call(
+	signature: &Signature,
+	runtime: &Type,
+	input: &Ident,
+	impl_trait: &Path,
+	api_version: &ApiVersion,
+) -> Result<TokenStream> {
+	let params =
+		extract_parameter_names_types_and_borrows(signature, AllowSelfRefInParameters::No)?;
+
+	let c = generate_crate_access();
+	let fn_name = &signature.ident;
+	let fn_name_str = fn_name.to_string();
+	let pnames = params.iter().map(|v| &v.0);
+	let pnames2 = params.iter().map(|v| &v.0);
+	let pnames3 = params.iter().map(|v| &v.0);
+	let pnames4 = params
+		.iter()
+		.map(|v| &v.0);
+	let ptypes = params.iter().map(|v| &v.1);
+	let pborrow = params.iter().map(|v| &v.2);
+
+	let decode_params = if params.is_empty() {
+		quote!(
+			if !#input.is_empty() {
+				panic!(
+					"Bad input data provided to {}: expected no parameters, but input buffer is not empty.",
+					#fn_name_str
+				);
+			}
+		)
+	} else {
+		let let_binding = if params.len() == 1 {
+			quote! {
+				let #( #pnames )* : #( #ptypes )*
+			}
+		} else {
+			quote! {
+				let ( #( #pnames ),* ) : ( #( #ptypes ),* )
+			}
+		};
+
+		let fn_name_arg = Ident::new(format!("{}Arg", fn_name_str.as_str()).as_str(), Span::call_site());
+		// eprintln!("c: {}", c);
+		// eprintln!("fn_name_arg: {}", fn_name_arg);
+
+		let pnames3_expanded = quote! {
+			#(#pnames3),*
+		};
+		// eprintln!("pnames 3 expanded: {:?}", pnames3_expanded);
+		
+		let pnames4_expanded = quote! {
+			#(#pnames4 .clone() ),*
+		};
+		
+		// eprintln!("pnames 4 expanded: {:?}", pnames4_expanded);
+		
+		let pnames4_group = Group::new(proc_macro2::Delimiter::Parenthesis, pnames4_expanded);
+
+		// eprintln!("pnames 4 group: {:?}", pnames4_group);
+		
+		quote!(
+			#let_binding =
+				match &#input[0] {
+					// #fn_name_arg(#pnames3_expanded) => { todo!() },
+					Madara::RuntimeArg::#fn_name_arg(#pnames3_expanded) => #pnames4_group,
+					_ => panic!()
+				};
+				// match #c::DecodeLimit::decode_all_with_depth_limit(
+				// 	#c::MAX_EXTRINSIC_DEPTH,
+				// 	&mut #input,
+				// ) {
+				// 	Ok(res) => res,
+				// 	Err(e) => panic!("Bad input data provided to {}: {}", #fn_name_str, e),
+				// };
 		)
 	};
 
@@ -194,6 +314,61 @@ fn generate_impl_calls(
 	Ok(impl_calls)
 }
 
+/// Generate all the implementation calls for the given functions.
+fn generate_impl_native_calls(
+	impls: &[ItemImpl],
+	input: &Ident,
+) -> Result<Vec<(Ident, Ident, TokenStream, Vec<Attribute>)>> {
+	let mut impl_calls = Vec::new();
+
+	for impl_ in impls {
+		let trait_api_ver = extract_api_version(&impl_.attrs, impl_.span())?;
+		let impl_trait_path = extract_impl_trait(impl_, RequireQualifiedTraitPath::Yes)?;
+		let impl_trait = extend_with_runtime_decl_path(impl_trait_path.clone());
+		let impl_trait_ident = &impl_trait_path
+			.segments
+			.last()
+			.ok_or_else(|| Error::new(impl_trait_path.span(), "Empty trait path not possible!"))?
+			.ident;
+
+		// eprintln!("impl_trait_ident: {:?}", impl_trait_ident);
+
+		for item in &impl_.items {
+			if let ImplItem::Fn(method) = item {
+				
+				if impl_trait_ident.to_string() != "MyGoodTrait" {
+				} else {
+					// eprintln!("Impl native call for {}, method: {}", impl_trait_ident.to_string(), method.sig.ident.to_string());
+					let impl_call = generate_impl_native_call(
+						&method.sig,
+						&impl_.self_ty,
+						input,
+						&impl_trait,
+						&trait_api_ver,
+					)?;
+					
+					// eprintln!("@ 1");
+					let mut attrs = filter_cfg_attrs(&impl_.attrs);
+
+					// eprintln!("@ 2");
+					// Add any `#[cfg(feature = X)]` attributes of the method to result
+					attrs.extend(filter_cfg_attrs(&method.attrs));
+
+					// eprintln!("@ 3");
+					impl_calls.push((
+						impl_trait_ident.clone(),
+						method.sig.ident.clone(),
+						impl_call,
+						attrs,
+					));
+				};
+			}
+		}
+	}
+
+	Ok(impl_calls)
+}
+
 /// Generate the dispatch function that is used in native to call into the runtime.
 fn generate_dispatch_function(impls: &[ItemImpl]) -> Result<TokenStream> {
 	let data = Ident::new("_sp_api_input_data_", Span::call_site());
@@ -209,12 +384,31 @@ fn generate_dispatch_function(impls: &[ItemImpl]) -> Result<TokenStream> {
 				)
 			});
 
+	let impl_native_calls = generate_impl_native_calls(impls, &data)?
+			.into_iter()
+			.map(|(trait_, fn_name, impl_, attrs)| {
+				
+				let name = prefix_function_with_trait(&trait_, &fn_name);
+				quote!(
+					#( #attrs )*
+					#name => Some(#c::Encode::encode(&{ #impl_ })),
+				)
+			});
+
 	Ok(quote!(
 		#c::std_enabled! {
 			pub fn dispatch(method: &str, mut #data: &[u8]) -> Option<Vec<u8>> {
 				match method {
 					#( #impl_calls )*
 					_ => None,
+				}
+			}
+
+			// FIXME
+			pub fn dispatch_native(method: &str, mut #data: &[Madara::RuntimeArg]) -> Option<Vec<u8>> {
+				match method {
+					#( #impl_native_calls )*
+					_ => unimplemented!(),
 				}
 			}
 		}
@@ -543,7 +737,12 @@ struct ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 impl<'a> ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 	/// Process the given item implementation.
 	fn process(mut self, input: ItemImpl) -> ItemImpl {
+		
+		// eprintln!("ApiRuntimeImplToApiRuntimeApiImpl - input: {:?}", input);
+		
 		let mut input = self.fold_item_impl(input);
+		
+		// eprintln!("input: {:?}", input);
 
 		let crate_ = generate_crate_access();
 
@@ -614,7 +813,71 @@ impl<'a> ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 				res
 			}
 		});
+		
+		input.items.push(parse_quote! {
+			fn __runtime_api_internal_native_call_api_at(
+				&self,
+				at: <__SrApiBlock__ as #crate_::BlockT>::Hash,
+				params: std::vec::Vec<Madara::RuntimeArg>,
+				fn_name: &dyn Fn(#crate_::RuntimeVersion) -> &'static str,
+			) -> std::result::Result<std::vec::Vec<u8>, #crate_::ApiError> {
+				// If we are not already in a transaction, we should create a new transaction
+				// and then commit/roll it back at the end!
+				let transaction_depth = *std::cell::RefCell::borrow(&self.transaction_depth);
 
+				if transaction_depth == 0 {
+					self.start_transaction();
+				}
+
+				let res = (|| {
+					let version = #crate_::CallApiAt::<__SrApiBlock__>::runtime_version_at(
+						self.call,
+						at,
+					)?;
+
+					match &mut *std::cell::RefCell::borrow_mut(&self.extensions_generated_for) {
+						Some(generated_for) => {
+							if *generated_for != at {
+								return std::result::Result::Err(
+									#crate_::ApiError::UsingSameInstanceForDifferentBlocks
+								)
+							}
+						},
+						generated_for @ None => {
+							#crate_::CallApiAt::<__SrApiBlock__>::initialize_extensions(
+								self.call,
+								at,
+								&mut std::cell::RefCell::borrow_mut(&self.extensions),
+							)?;
+
+							*generated_for = Some(at);
+						}
+					}
+
+					let params = #crate_::CallApiAtNativeParams {
+						at,
+						function: (*fn_name)(version),
+						arguments: params,
+						overlayed_changes: &self.changes,
+						call_context: self.call_context,
+						recorder: &self.recorder,
+						extensions: &self.extensions,
+					};
+
+					#crate_::CallApiAt::<__SrApiBlock__>::call_madara(
+						self.call,
+						params,
+					)
+				})();
+
+				if transaction_depth == 0 {
+					self.commit_or_rollback_transaction(std::result::Result::is_ok(&res));
+				}
+
+				res
+			}
+		});
+		
 		input
 	}
 }
@@ -646,7 +909,9 @@ impl<'a> Fold for ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 		input
 			.generics
 			.params
-			.push(parse_quote!( RuntimeApiImplCall: #crate_::CallApiAt<__SrApiBlock__> + 'static ));
+			.push(parse_quote!( RuntimeApiImplCall: #crate_::CallApiAt<__SrApiBlock__, Arg = Madara::RuntimeArg > + 'static ));
+		
+		// eprintln!("where_clause input generics: {:?}", input.generics.params);
 
 		let where_clause = input.generics.make_where_clause();
 
@@ -667,6 +932,7 @@ impl<'a> Fold for ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 		where_clause.predicates.push(parse_quote! {
 			__SrApiBlock__::Header: std::panic::UnwindSafe + std::panic::RefUnwindSafe
 		});
+		
 
 		input.attrs = filter_cfg_attrs(&input.attrs);
 
@@ -682,6 +948,9 @@ fn generate_api_impl_for_runtime_api(impls: &[ItemImpl]) -> Result<TokenStream> 
 		let impl_trait_path = extract_impl_trait(impl_, RequireQualifiedTraitPath::Yes)?;
 		let runtime_block = extract_block_type_from_trait_path(impl_trait_path)?;
 		let mut runtime_mod_path = extend_with_runtime_decl_path(impl_trait_path.clone());
+		
+		eprintln!("runtime_mod_path: {:?}", runtime_mod_path);
+		
 		// remove the trait to get just the module path
 		runtime_mod_path.segments.pop();
 
