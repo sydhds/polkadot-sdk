@@ -243,6 +243,7 @@ pub const MAX_EXTRINSIC_DEPTH: u32 = 256;
 /// Note that the latest version (4 in our example above) always contains all methods from all
 /// the versions before.
 pub use sp_api_proc_macro::decl_runtime_apis;
+pub use sp_api_proc_macro::decl_runtime_apis_native;
 
 /// Tags given trait implementations as runtime apis.
 ///

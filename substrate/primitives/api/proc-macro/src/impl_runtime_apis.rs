@@ -220,7 +220,7 @@ fn generate_impl_native_call(
 			#let_binding =
 				match &#input[0] {
 					// #fn_name_arg(#pnames3_expanded) => { todo!() },
-					Madara::RuntimeArg::#fn_name_arg(#pnames3_expanded) => #pnames4_group,
+					RuntimeArg::#fn_name_arg(#pnames3_expanded) => #pnames4_group,
 					_ => panic!()
 				};
 				// match #c::DecodeLimit::decode_all_with_depth_limit(
@@ -404,8 +404,14 @@ fn generate_dispatch_function(impls: &[ItemImpl]) -> Result<TokenStream> {
 				}
 			}
 
+			type MadaraBlock = generic::Block<
+				Header, 
+				// generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>
+				sp_runtime::OpaqueExtrinsic
+			>;
+			
 			// FIXME
-			pub fn dispatch_native(method: &str, mut #data: &[Madara::RuntimeArg]) -> Option<Vec<u8>> {
+			pub fn dispatch_native(method: &str, mut #data: &[RuntimeArg<MadaraBlock>]) -> Option<Vec<u8>> {
 				match method {
 					#( #impl_native_calls )*
 					_ => unimplemented!(),
@@ -736,7 +742,7 @@ struct ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 
 impl<'a> ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 	/// Process the given item implementation.
-	fn process(mut self, input: ItemImpl) -> ItemImpl {
+	fn process(mut self, input: ItemImpl, is_madara: bool) -> ItemImpl {
 		
 		// eprintln!("ApiRuntimeImplToApiRuntimeApiImpl - input: {:?}", input);
 		
@@ -813,12 +819,13 @@ impl<'a> ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 				res
 			}
 		});
-		
-		input.items.push(parse_quote! {
+
+		if is_madara {
+			input.items.push(parse_quote! {
 			fn __runtime_api_internal_native_call_api_at(
 				&self,
 				at: <__SrApiBlock__ as #crate_::BlockT>::Hash,
-				params: std::vec::Vec<Madara::RuntimeArg>,
+				params: std::vec::Vec<RuntimeArg<__SrApiBlock__>>,
 				fn_name: &dyn Fn(#crate_::RuntimeVersion) -> &'static str,
 			) -> std::result::Result<std::vec::Vec<u8>, #crate_::ApiError> {
 				// If we are not already in a transaction, we should create a new transaction
@@ -877,6 +884,7 @@ impl<'a> ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 				res
 			}
 		});
+		}
 		
 		input
 	}
@@ -909,7 +917,7 @@ impl<'a> Fold for ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 		input
 			.generics
 			.params
-			.push(parse_quote!( RuntimeApiImplCall: #crate_::CallApiAt<__SrApiBlock__, Arg = Madara::RuntimeArg > + 'static ));
+			.push(parse_quote!( RuntimeApiImplCall: #crate_::CallApiAt<__SrApiBlock__, Arg = RuntimeArg<__SrApiBlock__> > + 'static ));
 		
 		// eprintln!("where_clause input generics: {:?}", input.generics.params);
 
@@ -950,12 +958,21 @@ fn generate_api_impl_for_runtime_api(impls: &[ItemImpl]) -> Result<TokenStream> 
 		let mut runtime_mod_path = extend_with_runtime_decl_path(impl_trait_path.clone());
 		
 		eprintln!("runtime_mod_path: {:?}", runtime_mod_path);
+
+		let mut is_madara = false;
+		if let Some(path_segment) = runtime_mod_path.segments.last() {
+			if ["StarknetRuntimeApi", "ConvertTransactionRuntimeApi"].contains(&path_segment.ident.to_string().as_str()) {
+				is_madara = true;
+			}
+		}
+
+		eprintln!("is_madara: {}", is_madara);
 		
 		// remove the trait to get just the module path
 		runtime_mod_path.segments.pop();
 
 		let processed_impl =
-			ApiRuntimeImplToApiRuntimeApiImpl { runtime_block }.process(impl_.clone());
+			ApiRuntimeImplToApiRuntimeApiImpl { runtime_block }.process(impl_.clone(), is_madara);
 
 		result.push(processed_impl);
 	}

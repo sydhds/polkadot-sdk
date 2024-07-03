@@ -28,22 +28,14 @@ use crate::{
 	},
 };
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Delimiter, Group, Span, TokenStream, Punct, Spacing};
 
-use quote::quote;
+use quote::{quote, ToTokens};
 
-use syn::{
-	fold::{self, Fold},
-	parse::{Error, Parse, ParseStream, Result},
-	parse_macro_input, parse_quote,
-	spanned::Spanned,
-	token::Comma,
-	visit::{self, Visit},
-	Attribute, FnArg, GenericParam, Generics, Ident, ItemTrait, LitInt, LitStr, TraitBound,
-	TraitItem, TraitItemFn,
-};
+use syn::{fold::{self, Fold}, parse::{Error, Parse, ParseStream, Result}, parse_macro_input, parse_quote, spanned::Spanned, token::Comma, visit::{self, Visit}, Attribute, FnArg, GenericParam, Generics, Ident, ItemTrait, LitInt, LitStr, TraitBound, TraitItem, TraitItemFn, TypeParamBound};
 
 use std::collections::{BTreeMap, HashMap};
+use itertools::Itertools;
 
 /// The structure used for parsing the runtime api declarations.
 struct RuntimeApiDecls {
@@ -183,6 +175,100 @@ fn parse_renamed_attribute(renamed: &Attribute) -> Result<(String, u32)> {
 fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 	let mut result = Vec::new();
 
+	// Gather field for enum RuntimeArg
+	let mut enum_runtime_arg_fields = TokenStream::new();
+	for decl in decls {
+
+		if ["Core", "Metadata"].contains(&decl.ident.to_string().as_str()) {
+			continue;
+		}
+
+		/*
+		let super_trait_native = decl
+			.supertraits
+			.iter()
+			.find_map(|super_traits| {
+				if let TypeParamBound::Trait(super_traits_) = super_traits {
+					// eprintln!("super_traits_ path: {:?}", super_traits_.path);
+					// eprintln!("super_traits_ path: {:?}", super_traits_.path.segments.last());
+				
+					if let Some(path_seg) = super_traits_.path.segments.last() {
+						if path_seg.ident.to_string()	== "MadaraNative" {
+							return Some(true);		
+						} /* else {
+							None
+						} */
+					} /* else {
+						None
+					} */
+				
+				} /* else {
+					None
+				} */
+				
+				return None;
+		});
+		*/
+		
+		for item in &decl.items {
+			let syn::TraitItem::Fn(method) = item else { continue };
+
+			// Collect metadata only for the latest methods.
+			let is_changed_in =
+				method.attrs.iter().any(|attr| attr.path().is_ident(CHANGED_IN_ATTRIBUTE));
+			if is_changed_in {
+				continue
+			}
+
+			// eprintln!("method: {:?}", method);
+			// eprintln!("===");
+
+			// eprintln!("sig: {:?}", method.sig);
+			let signature = &method.sig;
+			
+			let signature_name = &signature.ident.to_string();
+			
+			// if ["version", "execute_block", "initialize_block", ].contains(&signature_name.as_str()) {
+			// if !["foo", "bar"].contains(&signature_name.as_str()) {
+			// 	eprintln!("Skipping method with signature name: {}", signature_name);
+			// 	continue;
+			// }
+
+			let mut types = vec![];
+
+			for input in &signature.inputs {
+				// Exclude `self` from metadata collection.
+				let syn::FnArg::Typed(typed) = input else { continue };
+
+				let pat = &typed.pat;
+				let name = quote!(#pat).to_string();
+				let ty = &typed.ty;
+
+				types.push(ty.clone());
+			}
+
+			// eprintln!("@@@ types: {:?}", types);
+
+			let group_types_stream = types
+				.iter()
+				.map(|ty| ty.to_token_stream())
+				.intersperse(Punct::new(',', Spacing::Alone).to_token_stream())
+				.collect::<TokenStream>();
+			let group_types = Group::new(Delimiter::Parenthesis, group_types_stream);
+			
+			// eprintln!("group_types: {}", group_types);
+
+			let field_name = Ident::new(
+				format!("{}Arg", signature.ident.to_string()).as_str(),
+				signature.span().clone(),
+			);
+			
+			enum_runtime_arg_fields.extend(field_name.to_token_stream());
+			enum_runtime_arg_fields.extend(group_types.to_token_stream());
+			enum_runtime_arg_fields.extend(Punct::new(',', Spacing::Alone).to_token_stream());
+		}
+	}
+
 	for decl in decls {
 		let mut decl = decl.clone();
 		let decl_span = decl.span();
@@ -286,7 +372,16 @@ fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 		));
 	}
 
-	Ok(quote!( #( #result )* ))
+	Ok(
+		quote! {
+			#( #result )*
+
+			pub enum RuntimeArg<Block: sp_api::BlockT> {
+				#enum_runtime_arg_fields
+				// _Unreachable(std::convert::Infallible, std::marker::PhantomData<Block>)
+			}
+		}
+	)
 }
 
 /// Modify the given runtime api declaration to be usable on the client side.
@@ -320,6 +415,17 @@ impl<'a> ToClientSideDecl<'a> {
 			) -> std::result::Result<std::vec::Vec<u8>, #crate_::ApiError>;
 		});
 
+		decl.items.push(parse_quote! {
+			/// !!INTERNAL USE ONLY!!
+			#[doc(hidden)]
+			fn __runtime_api_internal_native_call_api_at(
+				&self,
+				at: #block_hash,
+				params: std::vec::Vec<RuntimeArg<Block>>,
+				fn_name: &dyn Fn(#crate_::RuntimeVersion) -> &'static str,
+			) -> std::result::Result<std::vec::Vec<u8>, #crate_::ApiError>;
+		});
+
 		decl
 	}
 }
@@ -327,15 +433,34 @@ impl<'a> ToClientSideDecl<'a> {
 impl<'a> ToClientSideDecl<'a> {
 	fn fold_item_trait_items(
 		&mut self,
+		trait_name: String,
+		has_super_trait_madara_native: bool,
 		items: Vec<TraitItem>,
 		trait_generics_num: usize,
 	) -> Vec<TraitItem> {
+		
+		eprintln!("[fold_item_trait_items] {} {}", trait_name, has_super_trait_madara_native);
+		
 		let mut result = Vec::new();
 
 		items.into_iter().for_each(|i| match i {
 			TraitItem::Fn(method) => {
-				let fn_decl = self.create_method_decl(method, trait_generics_num);
-				result.push(fn_decl.into());
+				/*
+				if ["Core".to_string(), "Metadata".to_string()].contains(&trait_name) {
+					let fn_decl = self.create_method_decl(method, trait_generics_num);
+					result.push(fn_decl.into());
+				} else {
+					let fn_decl = self.create_method_native_decl(method, trait_generics_num);
+					result.push(fn_decl.into());
+				}
+				*/
+				if !has_super_trait_madara_native {
+					let fn_decl = self.create_method_decl(method, trait_generics_num);
+					result.push(fn_decl.into());
+				} else {
+					let fn_decl = self.create_method_native_decl(method, trait_generics_num);
+					result.push(fn_decl.into());
+				}
 			},
 			r => result.push(r),
 		});
@@ -347,6 +472,134 @@ impl<'a> ToClientSideDecl<'a> {
 	/// api client side. This method will call by default the `method_runtime_api_impl` for doing
 	/// the actual call into the runtime.
 	fn create_method_decl(
+		&mut self,
+		mut method: TraitItemFn,
+		trait_generics_num: usize,
+	) -> TraitItemFn {
+		let params = match extract_parameter_names_types_and_borrows(
+			&method.sig,
+			AllowSelfRefInParameters::No,
+		) {
+			Ok(res) => res.into_iter().map(|v| v.0).collect::<Vec<_>>(),
+			Err(e) => {
+				self.errors.push(e.to_compile_error());
+				Vec::new()
+			},
+		};
+		let ret_type = return_type_extract_type(&method.sig.output);
+
+		fold_fn_decl_for_client_side(&mut method.sig, self.block_hash, self.crate_);
+
+		let crate_ = self.crate_;
+
+		let found_attributes = remove_supported_attributes(&mut method.attrs);
+
+		// Parse the renamed attributes.
+		let mut renames = Vec::new();
+		for (_, a) in found_attributes.iter().filter(|a| a.0 == &RENAMED_ATTRIBUTE) {
+			match parse_renamed_attribute(a) {
+				Ok((old_name, version)) => {
+					renames.push((version, prefix_function_with_trait(&self.trait_, &old_name)));
+				},
+				Err(e) => self.errors.push(e.to_compile_error()),
+			}
+		}
+
+		renames.sort_by(|l, r| r.cmp(l));
+		let (versions, old_names) = renames.into_iter().fold(
+			(Vec::new(), Vec::new()),
+			|(mut versions, mut old_names), (version, old_name)| {
+				versions.push(version);
+				old_names.push(old_name);
+				(versions, old_names)
+			},
+		);
+
+		// Generate the function name before we may rename it below to
+		// `function_name_before_version_{}`.
+		let function_name = prefix_function_with_trait(&self.trait_, &method.sig.ident);
+
+		// If the method has a `changed_in` attribute, we need to alter the method name to
+		// `method_before_version_VERSION`.
+		match get_changed_in(&found_attributes) {
+			Ok(Some(version)) => {
+				// Make sure that the `changed_in` version is at least the current `api_version`.
+				if get_api_version(self.found_attributes).ok() < Some(version) {
+					self.errors.push(
+						Error::new(
+							method.span(),
+							"`changed_in` version can not be greater than the `api_version`",
+						)
+							.to_compile_error(),
+					);
+				}
+
+				let ident = Ident::new(
+					&format!("{}_before_version_{}", method.sig.ident, version),
+					method.sig.ident.span(),
+				);
+				method.sig.ident = ident;
+				method.attrs.push(parse_quote!( #[deprecated] ));
+			},
+			Ok(None) => {},
+			Err(e) => {
+				self.errors.push(e.to_compile_error());
+			},
+		};
+
+		// The module where the runtime relevant stuff is declared.
+		let trait_name = &self.trait_;
+		let runtime_mod = generate_runtime_mod_name_for_trait(trait_name);
+		let underscores = (0..trait_generics_num).map(|_| quote!(_));
+
+		let function_name_arg = Ident::new(format!("{}Arg", function_name.to_string()).as_str(), Span::call_site());
+		// let function_types = Group::new(Delimiter::Parenthesis, stream = function_types_);
+		let function_types = method.sig.inputs.clone();
+
+		// Generate the default implementation that calls the `method_runtime_api_impl` method.
+		method.default = Some(parse_quote! {
+			{
+				let __runtime_api_impl_params_encoded__ =
+					#crate_::Encode::encode(&( #( &#params ),* ));
+				// let __runtime_api_impl_params_encoded__ =
+				// 	vec![RuntimeArg::#function_name_arg((#function_types))];
+
+				<Self as #trait_name<#( #underscores ),*>>::__runtime_api_internal_call_api_at(
+					self,
+					__runtime_api_at_param__,
+					__runtime_api_impl_params_encoded__,
+					&|_version| {
+						#(
+							// Check if we need to call the function by an old name.
+							if _version.apis.iter().any(|(s, v)| {
+								s == &#runtime_mod::ID && *v < #versions
+							}) {
+								return #old_names
+							}
+						)*
+
+						#function_name
+					}
+				)
+				.and_then(|r|
+					std::result::Result::map_err(
+						<#ret_type as #crate_::Decode>::decode(&mut &r[..]),
+						|err| #crate_::ApiError::FailedToDecodeReturnValue {
+							function: #function_name,
+							error: err,
+						}
+					)
+				)
+			}
+		});
+
+		method
+	}
+
+	/// Takes the method declared by the user and creates the declaration we require for the runtime
+	/// api client side. This method will call by default the `method_runtime_api_impl` for doing
+	/// the actual call into the runtime.
+	fn create_method_native_decl(
 		&mut self,
 		mut method: TraitItemFn,
 		trait_generics_num: usize,
@@ -427,13 +680,21 @@ impl<'a> ToClientSideDecl<'a> {
 		let runtime_mod = generate_runtime_mod_name_for_trait(trait_name);
 		let underscores = (0..trait_generics_num).map(|_| quote!(_));
 
+		let function_name_arg = Ident::new(format!("{}Arg", method.sig.ident.to_string()).as_str(), Span::call_site());
+		let params_for_runtime_arg = quote! {
+			#(#params),*
+		};
+
+		eprintln!("params: {:?}", params);
+
 		// Generate the default implementation that calls the `method_runtime_api_impl` method.
 		method.default = Some(parse_quote! {
 			{
-				let __runtime_api_impl_params_encoded__ =
-					#crate_::Encode::encode(&( #( &#params ),* ));
+				// let __runtime_api_impl_params_encoded__ =
+				// 	#crate_::Encode::encode(&( #( &#params ),* ));
+				let __runtime_api_impl_params_encoded__ = vec![RuntimeArg::#function_name_arg(#params_for_runtime_arg)];
 
-				<Self as #trait_name<#( #underscores ),*>>::__runtime_api_internal_call_api_at(
+				<Self as #trait_name<#( #underscores ),*>>::__runtime_api_internal_native_call_api_at(
 					self,
 					__runtime_api_at_param__,
 					__runtime_api_impl_params_encoded__,
@@ -468,6 +729,24 @@ impl<'a> ToClientSideDecl<'a> {
 
 impl<'a> Fold for ToClientSideDecl<'a> {
 	fn fold_item_trait(&mut self, mut input: ItemTrait) -> ItemTrait {
+		
+		/*
+		let has_super_trait_madara_native = input
+			.supertraits
+			.iter()
+			.find_map(|super_traits| {
+				if let TypeParamBound::Trait(super_traits_) = super_traits {
+					if let Some(path_seg) = super_traits_.path.segments.last() {
+						if path_seg.ident.to_string()	== "MadaraNative" {
+							return Some(());
+						}
+					}
+				}
+				return None;
+			});
+		*/
+		let has_super_trait_madara_native = Some(true);
+		
 		extend_generics_with_block(&mut input.generics);
 
 		*self.found_attributes = remove_supported_attributes(&mut input.attrs);
@@ -484,7 +763,7 @@ impl<'a> Fold for ToClientSideDecl<'a> {
 			input.supertraits.push(parse_quote!( #crate_::Core<#block_ident> ));
 		}
 
-		input.items = self.fold_item_trait_items(input.items, input.generics.params.len());
+		input.items = self.fold_item_trait_items(input.ident.to_string(), has_super_trait_madara_native.is_some(), input.items, input.generics.params.len());
 
 		fold::fold_item_trait(self, input)
 	}
@@ -707,7 +986,7 @@ fn check_trait_decls(decls: &[ItemTrait]) -> Result<()> {
 }
 
 /// The implementation of the `decl_runtime_apis!` macro.
-pub fn decl_runtime_apis_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn decl_runtime_apis_native_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	// Parse all trait declarations
 	let RuntimeApiDecls { decls: api_decls } = parse_macro_input!(input as RuntimeApiDecls);
 
