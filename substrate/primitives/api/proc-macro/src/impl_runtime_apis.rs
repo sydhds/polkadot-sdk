@@ -178,6 +178,7 @@ fn generate_impl_native_call(
 	let pborrow = params.iter().map(|v| &v.2);
 
 	let decode_params = if params.is_empty() {
+		/*
 		quote!(
 			if !#input.is_empty() {
 				panic!(
@@ -186,6 +187,9 @@ fn generate_impl_native_call(
 				);
 			}
 		)
+		*/
+		// FIXME: find a good way to check it is empty
+		quote! {}
 	} else {
 		let let_binding = if params.len() == 1 {
 			quote! {
@@ -319,6 +323,9 @@ fn generate_impl_native_calls(
 	impls: &[ItemImpl],
 	input: &Ident,
 ) -> Result<Vec<(Ident, Ident, TokenStream, Vec<Attribute>)>> {
+
+	eprintln!("======");
+
 	let mut impl_calls = Vec::new();
 
 	for impl_ in impls {
@@ -331,37 +338,43 @@ fn generate_impl_native_calls(
 			.ok_or_else(|| Error::new(impl_trait_path.span(), "Empty trait path not possible!"))?
 			.ident;
 
-		// eprintln!("impl_trait_ident: {:?}", impl_trait_ident);
+		eprintln!("[generate_impl_native_calls] impl_trait_ident: {:?}", impl_trait_ident);
+
+		if !["StarknetRuntimeApi", "ConvertTransactionRuntimeApi"].contains(&impl_trait_ident.to_string().as_str()) {
+			continue;
+		}
 
 		for item in &impl_.items {
 			if let ImplItem::Fn(method) = item {
 				
-				if impl_trait_ident.to_string() != "MyGoodTrait" {
-				} else {
-					// eprintln!("Impl native call for {}, method: {}", impl_trait_ident.to_string(), method.sig.ident.to_string());
-					let impl_call = generate_impl_native_call(
-						&method.sig,
-						&impl_.self_ty,
-						input,
-						&impl_trait,
-						&trait_api_ver,
-					)?;
-					
-					// eprintln!("@ 1");
-					let mut attrs = filter_cfg_attrs(&impl_.attrs);
+				eprintln!("Impl native call for {}, method: {}", impl_trait_ident.to_string(), method.sig.ident.to_string());
+				
+				if ["extrinsic_filter", "get_index_and_tx_for_tx_hash"].contains(&method.sig.ident.to_string().as_str()) {
+					continue
+				}
+				
+				let impl_call = generate_impl_native_call(
+					&method.sig,
+					&impl_.self_ty,
+					input,
+					&impl_trait,
+					&trait_api_ver,
+				)?;
 
-					// eprintln!("@ 2");
-					// Add any `#[cfg(feature = X)]` attributes of the method to result
-					attrs.extend(filter_cfg_attrs(&method.attrs));
+				// eprintln!("@ 1");
+				let mut attrs = filter_cfg_attrs(&impl_.attrs);
 
-					// eprintln!("@ 3");
-					impl_calls.push((
-						impl_trait_ident.clone(),
-						method.sig.ident.clone(),
-						impl_call,
-						attrs,
-					));
-				};
+				// eprintln!("@ 2");
+				// Add any `#[cfg(feature = X)]` attributes of the method to result
+				attrs.extend(filter_cfg_attrs(&method.attrs));
+
+				// eprintln!("@ 3");
+				impl_calls.push((
+					impl_trait_ident.clone(),
+					method.sig.ident.clone(),
+					impl_call,
+					attrs,
+				));
 			}
 		}
 	}
@@ -371,6 +384,7 @@ fn generate_impl_native_calls(
 
 /// Generate the dispatch function that is used in native to call into the runtime.
 fn generate_dispatch_function(impls: &[ItemImpl]) -> Result<TokenStream> {
+
 	let data = Ident::new("_sp_api_input_data_", Span::call_site());
 	let c = generate_crate_access();
 	let impl_calls =
@@ -405,11 +419,11 @@ fn generate_dispatch_function(impls: &[ItemImpl]) -> Result<TokenStream> {
 			}
 
 			type MadaraBlock = generic::Block<
-				Header, 
+				Header,
 				// generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>
-				sp_runtime::OpaqueExtrinsic
+			 	sp_runtime::OpaqueExtrinsic
 			>;
-			
+
 			// FIXME
 			pub fn dispatch_native(method: &str, mut #data: &[RuntimeArg<MadaraBlock>]) -> Option<Vec<u8>> {
 				match method {
@@ -957,7 +971,7 @@ fn generate_api_impl_for_runtime_api(impls: &[ItemImpl]) -> Result<TokenStream> 
 		let runtime_block = extract_block_type_from_trait_path(impl_trait_path)?;
 		let mut runtime_mod_path = extend_with_runtime_decl_path(impl_trait_path.clone());
 		
-		eprintln!("runtime_mod_path: {:?}", runtime_mod_path);
+		// eprintln!("runtime_mod_path: {:?}", runtime_mod_path);
 
 		let mut is_madara = false;
 		if let Some(path_segment) = runtime_mod_path.segments.last() {
