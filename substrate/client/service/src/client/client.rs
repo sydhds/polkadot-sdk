@@ -1712,6 +1712,7 @@ where
 {
 	type StateBackend = B::State;
 	type Arg = E::Arg;
+	type Ret = E::Ret;
 
 	fn call_api_at(&self, params: CallApiAtParams<Block>) -> Result<Vec<u8>, sp_api::ApiError> {
 		self.executor
@@ -1727,7 +1728,7 @@ where
 			.map_err(Into::into)
 	}
 
-	fn call_madara(&self, params: CallApiAtNativeParams<Block, Self::Arg>) -> Result<Vec<u8>, ApiError> {
+	fn call_madara(&self, params: CallApiAtNativeParams<Block, Self::Arg>) -> Result<Self::Ret, ApiError> {
 		self.executor
 			.contextual_call_native(
 				params.at,

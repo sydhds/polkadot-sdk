@@ -314,7 +314,7 @@ mod execution {
 		/// blocks (e.g. a transaction at a time), ensure a different method is used.
 		///
 		/// Returns the SCALE encoded result of the executed function.
-		pub fn execute_native(&mut self, args: &[Exec::Arg]) -> Result<Vec<u8>, Box<dyn Error>> {
+		pub fn execute_native(&mut self, args: &[Exec::Arg]) -> Result<Exec::Ret, Box<dyn Error>> {
 			self.overlay
 				.enter_runtime()
 				.expect("StateMachine is never called from the runtime; qed");
@@ -341,12 +341,12 @@ mod execution {
 				.exit_runtime()
 				.expect("Runtime is not able to call this function in the overlay; qed");
 
-			trace!(
-				target: "state",
-				ext_id = %HexDisplay::from(&ext_id.to_le_bytes()),
-				?result,
-				"Return",
-			);
+			// trace!(
+			// 	target: "state",
+			// 	ext_id = %HexDisplay::from(&ext_id.to_le_bytes()),
+			// 	?result,
+			// 	"Return",
+			// );
 
 			result.map_err(|e| Box::new(e) as Box<_>)
 		}

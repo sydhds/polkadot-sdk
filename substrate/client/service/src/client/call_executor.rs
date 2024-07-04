@@ -155,6 +155,7 @@ where
 
 	type Backend = B;
 	type Arg = E::Arg;
+	type Ret = E::Ret;
 
 	fn execution_extensions(&self) -> &ExecutionExtensions<Block> {
 		&self.execution_extensions
@@ -267,7 +268,7 @@ where
 		recorder: &Option<ProofRecorder<Block>>,
 		call_context: CallContext,
 		extensions: &RefCell<Extensions>,
-	) -> Result<Vec<u8>, sp_blockchain::Error> {
+	) -> Result<Self::Ret, sp_blockchain::Error> {
 		let state = self.backend.state_at(at_hash)?;
 
 		let changes = &mut *changes.borrow_mut();

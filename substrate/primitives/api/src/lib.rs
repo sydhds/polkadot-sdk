@@ -534,6 +534,10 @@ pub enum ApiError {
 		#[source]
 		error: codec::Error,
 	},
+	#[error("Failed to unwrap enum in order to return value of {function}")]
+	FailedToUnwrapEnumForReturnValue {
+		function: &'static str,
+	},
 	#[error("Failed to convert return value from runtime to node of {function}")]
 	FailedToConvertReturnValue {
 		function: &'static str,
@@ -670,12 +674,13 @@ pub trait CallApiAt<Block: BlockT> {
 	type StateBackend: StateBackend<HashingFor<Block>> + AsTrieBackend<HashingFor<Block>>;
 
 	type Arg;
+	type Ret;
 
 	/// Calls the given api function with the given encoded arguments at the given block and returns
 	/// the encoded result.
 	fn call_api_at(&self, params: CallApiAtParams<Block>) -> Result<Vec<u8>, ApiError>;
 
-	fn call_madara(&self, params: CallApiAtNativeParams<Block, Self::Arg>) -> Result<Vec<u8>, ApiError>;
+	fn call_madara(&self, params: CallApiAtNativeParams<Block, Self::Arg>) -> Result<Self::Ret, ApiError>;
 
 	/// Returns the runtime version at the given block.
 	fn runtime_version_at(&self, at_hash: Block::Hash) -> Result<RuntimeVersion, ApiError>;

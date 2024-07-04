@@ -43,6 +43,8 @@ pub trait CodeExecutor: Sized + Send + Sync + ReadRuntimeVersion + Clone + 'stat
 	
 	/// Argument type
 	type Arg;
+	/// Return type
+	type Ret;
 
 	/// Call a given method in the runtime.
 	///
@@ -69,7 +71,7 @@ pub trait CodeExecutor: Sized + Send + Sync + ReadRuntimeVersion + Clone + 'stat
 		method: &str,
 		data: &[Self::Arg],
 		context: CallContext,
-	) -> (Result<Vec<u8>, Self::Error>, bool);
+	) -> (Result<Self::Ret, Self::Error>, bool);
 	
 	
 }

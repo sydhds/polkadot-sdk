@@ -402,9 +402,16 @@ fn generate_dispatch_function(impls: &[ItemImpl]) -> Result<TokenStream> {
 			.map(|(trait_, fn_name, impl_, attrs)| {
 				
 				let name = prefix_function_with_trait(&trait_, &fn_name);
+				
+				let name_ret = Ident::new(
+					format!("{}Ret", fn_name).as_str(),
+					Span::call_site()
+				);
+				// eprintln!("name_ret: {}", name_ret);
+				
 				quote!(
 					#( #attrs )*
-					#name => Some(#c::Encode::encode(&{ #impl_ })),
+					#name => Some(RuntimeRet::#name_ret({ #impl_ })),
 				)
 			});
 
@@ -423,8 +430,7 @@ fn generate_dispatch_function(impls: &[ItemImpl]) -> Result<TokenStream> {
 			 	sp_runtime::OpaqueExtrinsic
 			>;
 
-			// FIXME
-			pub fn dispatch_native(method: &str, mut #data: &[RuntimeArg<MadaraBlock>]) -> Option<Vec<u8>> {
+			pub fn dispatch_native(method: &str, mut #data: &[RuntimeArg<MadaraBlock>]) -> Option<RuntimeRet<MadaraBlock>> {
 				match method {
 					#( #impl_native_calls )*
 					_ => unimplemented!(),
@@ -840,7 +846,7 @@ impl<'a> ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 				at: <__SrApiBlock__ as #crate_::BlockT>::Hash,
 				params: std::vec::Vec<RuntimeArg<__SrApiBlock__>>,
 				fn_name: &dyn Fn(#crate_::RuntimeVersion) -> &'static str,
-			) -> std::result::Result<std::vec::Vec<u8>, #crate_::ApiError> {
+			) -> std::result::Result<RuntimeRet<__SrApiBlock__>, #crate_::ApiError> {
 				// If we are not already in a transaction, we should create a new transaction
 				// and then commit/roll it back at the end!
 				let transaction_depth = *std::cell::RefCell::borrow(&self.transaction_depth);
@@ -930,7 +936,7 @@ impl<'a> Fold for ApiRuntimeImplToApiRuntimeApiImpl<'a> {
 		input
 			.generics
 			.params
-			.push(parse_quote!( RuntimeApiImplCall: #crate_::CallApiAt<__SrApiBlock__, Arg = RuntimeArg<__SrApiBlock__> > + 'static ));
+			.push(parse_quote!( RuntimeApiImplCall: #crate_::CallApiAt<__SrApiBlock__, Arg = RuntimeArg<__SrApiBlock__>, Ret = RuntimeRet<__SrApiBlock__> > + 'static ));
 		
 		// eprintln!("where_clause input generics: {:?}", input.generics.params);
 

@@ -32,7 +32,7 @@ use proc_macro2::{Delimiter, Group, Span, TokenStream, Punct, Spacing};
 
 use quote::{quote, ToTokens};
 
-use syn::{fold::{self, Fold}, parse::{Error, Parse, ParseStream, Result}, parse_macro_input, parse_quote, spanned::Spanned, token::Comma, visit::{self, Visit}, Attribute, FnArg, GenericParam, Generics, Ident, ItemTrait, LitInt, LitStr, TraitBound, TraitItem, TraitItemFn, TypeParamBound};
+use syn::{fold::{self, Fold}, parse::{Error, Parse, ParseStream, Result}, parse_macro_input, parse_quote, spanned::Spanned, token::Comma, visit::{self, Visit}, Attribute, FnArg, GenericParam, Generics, Ident, ItemTrait, LitInt, LitStr, TraitBound, TraitItem, TraitItemFn, TypeParamBound, ReturnType};
 
 use std::collections::{BTreeMap, HashMap};
 use itertools::Itertools;
@@ -175,8 +175,10 @@ fn parse_renamed_attribute(renamed: &Attribute) -> Result<(String, u32)> {
 fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 	let mut result = Vec::new();
 
-	// Gather field for enum RuntimeArg
+	// Gather fields for enum RuntimeArg
 	let mut enum_runtime_arg_fields = TokenStream::new();
+	// Gather fields for enum RuntimeRet
+	let mut enum_runtime_ret_fields = TokenStream::new();
 	for decl in decls {
 
 		if ["Core", "Metadata"].contains(&decl.ident.to_string().as_str()) {
@@ -266,6 +268,24 @@ fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 			enum_runtime_arg_fields.extend(field_name.to_token_stream());
 			enum_runtime_arg_fields.extend(group_types.to_token_stream());
 			enum_runtime_arg_fields.extend(Punct::new(',', Spacing::Alone).to_token_stream());
+			
+			let field_name_ret = Ident::new(
+				format!("{}Ret", signature.ident.to_string()).as_str(),
+				signature.span().clone(),
+			);
+			
+			let mut group_ret_type_stream = TokenStream::new();
+			if let ReturnType::Type(punct, ret_ty) = &signature.output.clone() {
+				// eprintln!("ret_ty: {:?}", ret_ty);
+				group_ret_type_stream = ret_ty.clone().to_token_stream();
+			}
+			
+			let group_ret = Group::new(Delimiter::Parenthesis, group_ret_type_stream);
+			// eprintln!("group_ret: {:?}", group_ret);
+			
+			enum_runtime_ret_fields.extend(field_name_ret.to_token_stream());
+			enum_runtime_ret_fields.extend(group_ret.to_token_stream());
+			enum_runtime_ret_fields.extend(Punct::new(',', Spacing::Alone).to_token_stream());
 		}
 	}
 
@@ -380,6 +400,11 @@ fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 				#enum_runtime_arg_fields
 				_Unreachable(std::convert::Infallible, std::marker::PhantomData<Block>)
 			}
+			
+			pub enum RuntimeRet<Block: sp_api::BlockT> {
+				#enum_runtime_ret_fields
+				_Unreachable(std::convert::Infallible, std::marker::PhantomData<Block>)
+			}
 		}
 	)
 }
@@ -423,7 +448,7 @@ impl<'a> ToClientSideDecl<'a> {
 				at: #block_hash,
 				params: std::vec::Vec<RuntimeArg<Block>>,
 				fn_name: &dyn Fn(#crate_::RuntimeVersion) -> &'static str,
-			) -> std::result::Result<std::vec::Vec<u8>, #crate_::ApiError>;
+			) -> std::result::Result<RuntimeRet<Block>, #crate_::ApiError>;
 		});
 
 		decl
@@ -681,6 +706,7 @@ impl<'a> ToClientSideDecl<'a> {
 		let underscores = (0..trait_generics_num).map(|_| quote!(_));
 
 		let function_name_arg = Ident::new(format!("{}Arg", method.sig.ident.to_string()).as_str(), Span::call_site());
+		let function_name_ret = Ident::new(format!("{}Ret", method.sig.ident.to_string()).as_str(), Span::call_site());
 		let params_for_runtime_arg = quote! {
 			#(#params),*
 		};
@@ -712,13 +738,13 @@ impl<'a> ToClientSideDecl<'a> {
 					}
 				)
 				.and_then(|r|
-					std::result::Result::map_err(
-						<#ret_type as #crate_::Decode>::decode(&mut &r[..]),
-						|err| #crate_::ApiError::FailedToDecodeReturnValue {
+					if let RuntimeRet::#function_name_ret(ret) = r {
+					 	Ok(ret)
+					} else {
+						Err(#crate_::ApiError::FailedToUnwrapEnumForReturnValue {
 							function: #function_name,
-							error: err,
-						}
-					)
+						})
+					}	
 				)
 			}
 		});

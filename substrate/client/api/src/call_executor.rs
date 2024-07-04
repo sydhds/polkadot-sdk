@@ -50,6 +50,8 @@ pub trait CallExecutor<B: BlockT>: RuntimeVersionOf {
 
 	/// Argument type
 	type Arg;
+	/// Return type
+	type Ret;
 	
 	/// Returns the [`ExecutionExtensions`].
 	fn execution_extensions(&self) -> &ExecutionExtensions<B>;
@@ -95,7 +97,7 @@ pub trait CallExecutor<B: BlockT>: RuntimeVersionOf {
 		proof_recorder: &Option<ProofRecorder<B>>,
 		call_context: CallContext,
 		extensions: &RefCell<Extensions>,
-	) -> sp_blockchain::Result<Vec<u8>>;
+	) -> sp_blockchain::Result<Self::Ret>;
 
 	/// Extract RuntimeVersion of given block
 	///

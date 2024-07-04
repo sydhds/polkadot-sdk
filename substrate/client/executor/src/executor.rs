@@ -74,12 +74,14 @@ pub trait NativeExecutionDispatch: Send + Sync {
 
 	/// Argument type
 	type Arg: UnwindSafe + RefUnwindSafe;
+	/// Return type
+	type Ret: UnwindSafe + RefUnwindSafe;
 
 	/// Dispatch a method in the runtime.
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>>;
 
 	/// Dispatch a method in the runtime.
-	fn dispatch_native(method: &str, data: &[Self::Arg]) -> Option<Vec<u8>>;
+	fn dispatch_native(method: &str, data: &[Self::Arg]) -> Option<Self::Ret>;
 
 	/// Provide native runtime version.
 	fn native_version() -> NativeVersion;
@@ -493,6 +495,7 @@ where
 {
 	type Error = Error;
 	type Arg = ();
+	type Ret = ();
 
 	fn call(
 		&self,
@@ -535,7 +538,7 @@ where
 		(result, false)
 	}
 
-	fn call_native(&self, ext: &mut dyn Externalities, runtime_code: &RuntimeCode, method: &str, data: &[Self::Arg], context: CallContext) -> (std::result::Result<Vec<u8>, Self::Error>, bool) {
+	fn call_native(&self, ext: &mut dyn Externalities, runtime_code: &RuntimeCode, method: &str, data: &[Self::Arg], context: CallContext) -> (std::result::Result<Self::Ret, Self::Error>, bool) {
 		unimplemented!()
 	}
 }
@@ -651,6 +654,7 @@ impl<D: NativeExecutionDispatch> GetNativeVersion for NativeElseWasmExecutor<D> 
 impl<D: NativeExecutionDispatch + 'static> CodeExecutor for NativeElseWasmExecutor<D> {
 	type Error = Error;
 	type Arg = D::Arg;
+	type Ret = D::Ret;
 
 	fn call(
 		&self,
@@ -676,16 +680,13 @@ impl<D: NativeExecutionDispatch + 'static> CodeExecutor for NativeElseWasmExecut
     	(result, used_native)
 	}
 
-	fn call_native(&self, ext: &mut dyn Externalities, runtime_code: &RuntimeCode, method: &str, data: &[Self::Arg], context: CallContext) -> (std::result::Result<Vec<u8>, Self::Error>, bool) {
+	fn call_native(&self, ext: &mut dyn Externalities, runtime_code: &RuntimeCode, method: &str, data: &[Self::Arg], context: CallContext) -> (std::result::Result<Self::Ret, Self::Error>, bool) {
 
 		// TODO
 		// let can_call_with =
 		// 	onchain_version.can_call_with(&self.native_version.runtime_version);
 
 		let mut used_native = true;
-
-		// let result = Ok(with_externalities_safe(ext, move || D::dispatch_native(method, data))?
-		// 	.ok_or_else(|| Error::MethodNotFound(method.to_owned())));
 
 		let result_ = with_externalities_safe(ext, move || D::dispatch_native(method, data));
 
