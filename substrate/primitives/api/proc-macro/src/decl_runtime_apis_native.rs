@@ -378,7 +378,7 @@ fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 
 			pub enum RuntimeArg<Block: sp_api::BlockT> {
 				#enum_runtime_arg_fields
-				// _Unreachable(std::convert::Infallible, std::marker::PhantomData<Block>)
+				_Unreachable(std::convert::Infallible, std::marker::PhantomData<Block>)
 			}
 		}
 	)

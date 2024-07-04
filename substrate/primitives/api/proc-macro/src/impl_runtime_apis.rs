@@ -349,9 +349,9 @@ fn generate_impl_native_calls(
 				
 				eprintln!("Impl native call for {}, method: {}", impl_trait_ident.to_string(), method.sig.ident.to_string());
 				
-				if ["extrinsic_filter", "get_index_and_tx_for_tx_hash"].contains(&method.sig.ident.to_string().as_str()) {
-					continue
-				}
+				// if ["extrinsic_filter", "get_index_and_tx_for_tx_hash"].contains(&method.sig.ident.to_string().as_str()) {
+				// 	continue
+				// }
 				
 				let impl_call = generate_impl_native_call(
 					&method.sig,
