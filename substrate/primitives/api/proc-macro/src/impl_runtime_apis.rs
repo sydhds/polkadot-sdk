@@ -176,20 +176,20 @@ fn generate_impl_native_call(
 		.map(|v| &v.0);
 	let ptypes = params.iter().map(|v| &v.1);
 	let pborrow = params.iter().map(|v| &v.2);
+	
+	let fn_name_arg = Ident::new(format!("{}Arg", fn_name_str.as_str()).as_str(), Span::call_site());
 
 	let decode_params = if params.is_empty() {
-		/*
-		quote!(
-			if !#input.is_empty() {
+		quote! {
+			
+			if !matches!(#input[0], RuntimeArg::#fn_name_arg(..)) {
 				panic!(
 					"Bad input data provided to {}: expected no parameters, but input buffer is not empty.",
 					#fn_name_str
 				);
-			}
-		)
-		*/
-		// FIXME: find a good way to check it is empty
-		quote! {}
+			} 
+			
+		}
 	} else {
 		let let_binding = if params.len() == 1 {
 			quote! {
@@ -201,7 +201,6 @@ fn generate_impl_native_call(
 			}
 		};
 
-		let fn_name_arg = Ident::new(format!("{}Arg", fn_name_str.as_str()).as_str(), Span::call_site());
 		// eprintln!("c: {}", c);
 		// eprintln!("fn_name_arg: {}", fn_name_arg);
 
