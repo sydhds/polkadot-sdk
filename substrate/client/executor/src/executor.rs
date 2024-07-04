@@ -682,10 +682,6 @@ impl<D: NativeExecutionDispatch + 'static> CodeExecutor for NativeElseWasmExecut
 
 	fn call_native(&self, ext: &mut dyn Externalities, runtime_code: &RuntimeCode, method: &str, data: &[Self::Arg], context: CallContext) -> (std::result::Result<Self::Ret, Self::Error>, bool) {
 
-		// TODO
-		// let can_call_with =
-		// 	onchain_version.can_call_with(&self.native_version.runtime_version);
-
 		let mut used_native = true;
 
 		let result_ = with_externalities_safe(ext, move || D::dispatch_native(method, data));

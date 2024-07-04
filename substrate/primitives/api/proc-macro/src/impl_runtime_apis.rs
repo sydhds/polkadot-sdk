@@ -102,8 +102,6 @@ fn generate_impl_call(
 			}
 		};
 
-		// eprintln!("ORIG c: {:?}", c);
-		
 		quote!(
 			#let_binding =
 				match #c::DecodeLimit::decode_all_with_depth_limit(
@@ -201,7 +199,6 @@ fn generate_impl_native_call(
 			}
 		};
 
-		// eprintln!("c: {}", c);
 		// eprintln!("fn_name_arg: {}", fn_name_arg);
 
 		let pnames3_expanded = quote! {
@@ -222,17 +219,10 @@ fn generate_impl_native_call(
 		quote!(
 			#let_binding =
 				match &#input[0] {
-					// #fn_name_arg(#pnames3_expanded) => { todo!() },
 					RuntimeArg::#fn_name_arg(#pnames3_expanded) => #pnames4_group,
 					_ => panic!()
 				};
-				// match #c::DecodeLimit::decode_all_with_depth_limit(
-				// 	#c::MAX_EXTRINSIC_DEPTH,
-				// 	&mut #input,
-				// ) {
-				// 	Ok(res) => res,
-				// 	Err(e) => panic!("Bad input data provided to {}: {}", #fn_name_str, e),
-				// };
+
 		)
 	};
 
@@ -323,8 +313,6 @@ fn generate_impl_native_calls(
 	input: &Ident,
 ) -> Result<Vec<(Ident, Ident, TokenStream, Vec<Attribute>)>> {
 
-	eprintln!("======");
-
 	let mut impl_calls = Vec::new();
 
 	for impl_ in impls {
@@ -337,7 +325,7 @@ fn generate_impl_native_calls(
 			.ok_or_else(|| Error::new(impl_trait_path.span(), "Empty trait path not possible!"))?
 			.ident;
 
-		eprintln!("[generate_impl_native_calls] impl_trait_ident: {:?}", impl_trait_ident);
+		// eprintln!("[generate_impl_native_calls] impl_trait_ident: {:?}", impl_trait_ident);
 
 		if !["StarknetRuntimeApi", "ConvertTransactionRuntimeApi"].contains(&impl_trait_ident.to_string().as_str()) {
 			continue;
@@ -346,11 +334,7 @@ fn generate_impl_native_calls(
 		for item in &impl_.items {
 			if let ImplItem::Fn(method) = item {
 				
-				eprintln!("Impl native call for {}, method: {}", impl_trait_ident.to_string(), method.sig.ident.to_string());
-				
-				// if ["extrinsic_filter", "get_index_and_tx_for_tx_hash"].contains(&method.sig.ident.to_string().as_str()) {
-				// 	continue
-				// }
+				// eprintln!("Impl native call for {}, method: {}", impl_trait_ident.to_string(), method.sig.ident.to_string());
 				
 				let impl_call = generate_impl_native_call(
 					&method.sig,
@@ -360,14 +344,11 @@ fn generate_impl_native_calls(
 					&trait_api_ver,
 				)?;
 
-				// eprintln!("@ 1");
 				let mut attrs = filter_cfg_attrs(&impl_.attrs);
 
-				// eprintln!("@ 2");
 				// Add any `#[cfg(feature = X)]` attributes of the method to result
 				attrs.extend(filter_cfg_attrs(&method.attrs));
 
-				// eprintln!("@ 3");
 				impl_calls.push((
 					impl_trait_ident.clone(),
 					method.sig.ident.clone(),
@@ -985,8 +966,6 @@ fn generate_api_impl_for_runtime_api(impls: &[ItemImpl]) -> Result<TokenStream> 
 			}
 		}
 
-		eprintln!("is_madara: {}", is_madara);
-		
 		// remove the trait to get just the module path
 		runtime_mod_path.segments.pop();
 

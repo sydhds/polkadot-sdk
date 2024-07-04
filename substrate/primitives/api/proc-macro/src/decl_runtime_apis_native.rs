@@ -185,33 +185,6 @@ fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 			continue;
 		}
 
-		/*
-		let super_trait_native = decl
-			.supertraits
-			.iter()
-			.find_map(|super_traits| {
-				if let TypeParamBound::Trait(super_traits_) = super_traits {
-					// eprintln!("super_traits_ path: {:?}", super_traits_.path);
-					// eprintln!("super_traits_ path: {:?}", super_traits_.path.segments.last());
-				
-					if let Some(path_seg) = super_traits_.path.segments.last() {
-						if path_seg.ident.to_string()	== "MadaraNative" {
-							return Some(true);		
-						} /* else {
-							None
-						} */
-					} /* else {
-						None
-					} */
-				
-				} /* else {
-					None
-				} */
-				
-				return None;
-		});
-		*/
-		
 		for item in &decl.items {
 			let syn::TraitItem::Fn(method) = item else { continue };
 
@@ -230,12 +203,6 @@ fn generate_runtime_decls(decls: &[ItemTrait]) -> Result<TokenStream> {
 			
 			let signature_name = &signature.ident.to_string();
 			
-			// if ["version", "execute_block", "initialize_block", ].contains(&signature_name.as_str()) {
-			// if !["foo", "bar"].contains(&signature_name.as_str()) {
-			// 	eprintln!("Skipping method with signature name: {}", signature_name);
-			// 	continue;
-			// }
-
 			let mut types = vec![];
 
 			for input in &signature.inputs {
@@ -464,21 +431,13 @@ impl<'a> ToClientSideDecl<'a> {
 		trait_generics_num: usize,
 	) -> Vec<TraitItem> {
 		
-		eprintln!("[fold_item_trait_items] {} {}", trait_name, has_super_trait_madara_native);
+		// eprintln!("[fold_item_trait_items] {} {}", trait_name, has_super_trait_madara_native);
 		
 		let mut result = Vec::new();
 
 		items.into_iter().for_each(|i| match i {
 			TraitItem::Fn(method) => {
-				/*
-				if ["Core".to_string(), "Metadata".to_string()].contains(&trait_name) {
-					let fn_decl = self.create_method_decl(method, trait_generics_num);
-					result.push(fn_decl.into());
-				} else {
-					let fn_decl = self.create_method_native_decl(method, trait_generics_num);
-					result.push(fn_decl.into());
-				}
-				*/
+
 				if !has_super_trait_madara_native {
 					let fn_decl = self.create_method_decl(method, trait_generics_num);
 					result.push(fn_decl.into());
@@ -711,7 +670,7 @@ impl<'a> ToClientSideDecl<'a> {
 			#(#params),*
 		};
 
-		eprintln!("params: {:?}", params);
+		// eprintln!("params: {:?}", params);
 
 		// Generate the default implementation that calls the `method_runtime_api_impl` method.
 		method.default = Some(parse_quote! {
